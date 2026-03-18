@@ -69,6 +69,54 @@
         .preview-images-container { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
         .preview-image-item { position: relative; width: 80px; height: 80px; border-radius: 8px; overflow: hidden; border: 2px solid #e5e7eb; }
         .preview-image-item img { width: 100%; height: 100%; object-fit: cover; }
+
+        /* ════════════════════════════════════════════════
+           SKELETON LOADER SYSTEM
+        ════════════════════════════════════════════════ */
+        @keyframes shimmer {
+            0%   { background-position: -700px 0; }
+            100% { background-position:  700px 0; }
+        }
+        .skeleton {
+            background: linear-gradient(90deg,
+                #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+            background-size: 700px 100%;
+            animation: shimmer 1.4s ease-in-out infinite;
+            border-radius: 8px;
+        }
+        .dark .skeleton {
+            background: linear-gradient(90deg,
+                #1e293b 25%, #334155 50%, #1e293b 75%);
+            background-size: 700px 100%;
+        }
+        /* Stagger each skeleton card */
+        .skeleton-card:nth-child(1) .skeleton { animation-delay: 0s; }
+        .skeleton-card:nth-child(2) .skeleton { animation-delay: .08s; }
+        .skeleton-card:nth-child(3) .skeleton { animation-delay: .16s; }
+        .skeleton-card:nth-child(4) .skeleton { animation-delay: .24s; }
+        .skeleton-card:nth-child(5) .skeleton { animation-delay: .32s; }
+        .skeleton-card:nth-child(6) .skeleton { animation-delay: .40s; }
+
+        /* Fade-in when real content replaces skeleton */
+        @keyframes fadeInContent {
+            from { opacity:0; transform:translateY(8px); }
+            to   { opacity:1; transform:translateY(0);   }
+        }
+        .content-loaded { animation: fadeInContent .4s ease forwards; }
+
+        /* Animated number counter */
+        @keyframes countUp {
+            from { opacity:0; transform:scale(.7); }
+            to   { opacity:1; transform:scale(1);  }
+        }
+        .stat-number { animation: countUp .5s cubic-bezier(.34,1.56,.64,1) forwards; }
+
+        /* Pulse dot for live badge */
+        @keyframes pulseDot {
+            0%,100% { transform:scale(1); opacity:1; }
+            50%      { transform:scale(1.4); opacity:.7; }
+        }
+        .pulse-dot { animation: pulseDot 1.5s ease-in-out infinite; }
     </style>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
@@ -744,39 +792,149 @@
             return colors[status] || 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100';
         }
 
-        async function loadData(targetRoute = lastViewedRoute) {
-            ['dashboard', 'livestock', 'orders', 'customers', 'settings'].forEach(v => document.getElementById(`admin-view-${v}`)?.classList.toggle('hidden', v !== targetRoute));
-            const isPulling = document.getElementById('pull-to-refresh').style.top === '20px';
-            const mainContainer = document.querySelector('main .flex-1.overflow-y-auto');
-            if (mainContainer && !document.getElementById('loading-overlay') && !isPulling) {
-                mainContainer.insertAdjacentHTML('afterbegin', `<div id="loading-overlay" class="absolute inset-0 bg-white/80 dark:bg-gray-900/90 flex items-center justify-center z-50 backdrop-blur-sm transition-opacity"><div class="text-center animate-pulse"><i data-lucide="loader-2" class="w-12 h-12 text-green-600 dark:text-green-400 animate-spin mx-auto"></i><p class="mt-4 text-sm font-semibold text-gray-600 dark:text-gray-300 tracking-wide uppercase">Loading Data...</p></div></div>`);
-                lucide.createIcons();
+        // ── SKELETON GENERATORS ──────────────────────────────────────────────
+        function skeletonStatCards() {
+            return Array(5).fill(0).map((_, i) => `
+              <div class="skeleton-card rounded-2xl p-6 h-28 ${['bg-blue-600/20','bg-emerald-500/20','bg-orange-500/20','bg-cyan-500/20','bg-fuchsia-500/20'][i]}" style="animation-delay:${i*60}ms">
+                <div class="flex justify-between items-start">
+                  <div class="space-y-3 flex-1">
+                    <div class="skeleton h-4 w-28 rounded-lg"></div>
+                    <div class="skeleton h-9 w-20 rounded-xl"></div>
+                  </div>
+                  <div class="skeleton h-12 w-12 rounded-xl"></div>
+                </div>
+              </div>`).join('');
+        }
+
+        function skeletonLivestockGrid() {
+            return Array(6).fill(0).map((_, i) => `
+              <div class="skeleton-card bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+                <div class="skeleton h-48 w-full rounded-xl mb-4"></div>
+                <div class="space-y-2 mb-4">
+                  <div class="skeleton h-5 w-3/4 rounded-lg"></div>
+                  <div class="skeleton h-4 w-1/2 rounded-lg"></div>
+                  <div class="skeleton h-4 w-2/3 rounded-lg"></div>
+                </div>
+                <div class="flex justify-between items-center pt-4 border-t border-gray-100 dark:border-gray-700">
+                  <div class="skeleton h-6 w-24 rounded-lg"></div>
+                  <div class="flex gap-2">
+                    <div class="skeleton h-9 w-9 rounded-lg"></div>
+                    <div class="skeleton h-9 w-9 rounded-lg"></div>
+                  </div>
+                </div>
+              </div>`).join('');
+        }
+
+        function skeletonOrderRows() {
+            return Array(5).fill(0).map((_, i) => `
+              <tr class="skeleton-card border-b border-gray-100 dark:border-gray-700" style="animation-delay:${i*50}ms">
+                <td class="px-4 py-4"><div class="skeleton h-4 w-16 rounded"></div></td>
+                <td class="px-4 py-4"><div class="skeleton h-4 w-28 rounded"></div></td>
+                <td class="px-4 py-4"><div class="skeleton h-4 w-20 rounded"></div></td>
+                <td class="px-4 py-4"><div class="skeleton h-6 w-20 rounded-full"></div></td>
+                <td class="px-4 py-4"><div class="skeleton h-8 w-24 rounded-lg"></div></td>
+                <td class="px-4 py-4"><div class="skeleton h-8 w-8 rounded-lg"></div></td>
+              </tr>`).join('');
+        }
+
+        function skeletonCustomerRows() {
+            return Array(6).fill(0).map((_, i) => `
+              <tr class="skeleton-card border-b border-gray-100 dark:border-gray-700" style="animation-delay:${i*50}ms">
+                <td class="px-4 py-4 flex items-center gap-3">
+                  <div class="skeleton h-9 w-9 rounded-full flex-shrink-0"></div>
+                  <div class="skeleton h-4 w-32 rounded"></div>
+                </td>
+                <td class="px-4 py-4"><div class="skeleton h-4 w-44 rounded"></div></td>
+                <td class="px-4 py-4"><div class="skeleton h-4 w-24 rounded"></div></td>
+              </tr>`).join('');
+        }
+
+        // Show skeletons immediately when switching views
+        function showSkeletons(view) {
+            if (view === 'dashboard') {
+                // For dashboard, overlay skeleton cards WITHOUT destroying stat IDs
+                // (animateStat needs stat-livestock, stat-orders etc. to exist)
+                const statEls = ['stat-livestock','stat-orders','stat-revenue','stat-goats','stat-sheep'];
+                statEls.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) { el.innerHTML = '<span class="skeleton inline-block h-9 w-20 rounded-xl align-middle"></span>'; }
+                });
+            } else if (view === 'livestock') {
+                const g = document.getElementById('livestock-grid');
+                if (g) g.innerHTML = skeletonLivestockGrid();
+            } else if (view === 'orders') {
+                const tb = document.getElementById('orders-table-body');
+                if (tb) tb.innerHTML = skeletonOrderRows();
+            } else if (view === 'customers') {
+                const ct = document.getElementById('customers-table-body');
+                if (ct) ct.innerHTML = skeletonCustomerRows();
             }
+        }
+
+        // Animate stat numbers counting up
+        function animateStat(elId, targetValue, prefix='', suffix='') {
+            const el = document.getElementById(elId);
+            if (!el) return;
+            const isNum = typeof targetValue === 'number';
+            if (!isNum) { el.textContent = prefix + targetValue + suffix; el.classList.add('stat-number'); return; }
+            const duration = 600;
+            const start = performance.now();
+            const from = 0;
+            function step(now) {
+                const p = Math.min((now - start) / duration, 1);
+                const ease = 1 - Math.pow(1 - p, 3); // ease-out-cubic
+                el.textContent = prefix + Math.round(from + (targetValue - from) * ease).toLocaleString('en-IN') + suffix;
+                if (p < 1) requestAnimationFrame(step);
+                else { el.textContent = prefix + targetValue.toLocaleString('en-IN') + suffix; el.classList.add('stat-number'); }
+            }
+            requestAnimationFrame(step);
+        }
+
+        async function loadData(targetRoute = lastViewedRoute) {
+            // Show correct view & inject skeletons IMMEDIATELY (no spinner overlay)
+            ['dashboard', 'livestock', 'orders', 'customers', 'settings'].forEach(v =>
+                document.getElementById(`admin-view-${v}`)?.classList.toggle('hidden', v !== targetRoute)
+            );
+            showSkeletons(targetRoute);
 
             try {
+                // Fetch all three in parallel
                 const [livestockRes, ordersRes, usersRes] = await Promise.all([
-                    fetch(`${API_URL}/admin/livestock`).then(res => res.json()),
-                    fetch(`${API_URL}/admin/orders`).then(res => res.json()),
-                    fetch(`${API_URL}/admin/users`).then(res => res.json())
+                    fetch(`${API_URL}/admin/livestock`).then(r => r.json()),
+                    fetch(`${API_URL}/admin/orders`).then(r => r.json()),
+                    fetch(`${API_URL}/admin/users`).then(r => r.json())
                 ]);
                 livestock = livestockRes.livestock || [];
-                orders = ordersRes.orders || [];
-                customers = usersRes.users || [];
-                
-                document.getElementById('stat-livestock').innerText = livestock.length;
-                document.getElementById('stat-orders').innerText = orders.length;
-                const totalRevenue = orders.filter(o => o.status === 'Delivered').reduce((sum, order) => sum + (order.total || 0), 0);
-                document.getElementById('stat-revenue').innerText = formatINR(totalRevenue);
-                document.getElementById('settings-revenue').innerText = formatINR(totalRevenue);
-                if(document.getElementById('stat-goats')) document.getElementById('stat-goats').innerText = livestock.filter(l => l.type === 'Goat').length;
-                if(document.getElementById('stat-sheep')) document.getElementById('stat-sheep').innerText = livestock.filter(l => l.type === 'Sheep').length;
+                orders    = ordersRes.orders    || [];
+                customers = usersRes.users      || [];
 
-                document.getElementById('loading-overlay')?.remove();
+                // Animate stats counting up
+                const totalRevenue = orders.filter(o => o.status === 'Delivered')
+                    .reduce((s, o) => s + (o.total || 0), 0);
+
+                animateStat('stat-livestock', livestock.length);
+                animateStat('stat-orders',    orders.length);
+                animateStat('stat-revenue',   totalRevenue, '₹');
+                animateStat('stat-goats',     livestock.filter(l => l.type === 'Goat').length);
+                animateStat('stat-sheep',     livestock.filter(l => l.type === 'Sheep').length);
+
+                const settingsRev = document.getElementById('settings-revenue');
+                if (settingsRev) settingsRev.textContent = '₹' + totalRevenue.toLocaleString('en-IN');
+
+                // Render actual content (fades in via CSS)
                 adminRouter(targetRoute);
-            } catch (error) {
-                console.error("Error loading data:", error);
-                document.getElementById('loading-overlay')?.remove();
-                showToast("Failed to load data", "error");
+
+                // Mark grids as loaded for fade-in animation
+                const grid = document.getElementById('livestock-grid');
+                const tb   = document.getElementById('orders-table-body');
+                const ct   = document.getElementById('customers-table-body');
+                if (grid) grid.classList.add('content-loaded');
+                if (tb)   tb.classList.add('content-loaded');
+                if (ct)   ct.classList.add('content-loaded');
+
+            } catch (err) {
+                console.error('loadData error:', err);
+                showToast('Failed to load data. Retrying...', 'error');
                 adminRouter(targetRoute);
             }
         }
@@ -825,7 +983,7 @@
                 }
 
                 return `
-                <div class="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm relative group hover:shadow-xl hover:-translate-y-1 transition-all duration-300 animate-fade-in-up" style="animation-delay: ${index * 50}ms">
+                <div class="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm relative group hover:shadow-xl hover:-translate-y-1 transition-all duration-300 content-loaded" style="animation-delay: ${index * 60}ms; animation-fill-mode:both;">
                     ${imagesHTML}
                     <div class="space-y-2 mb-4 px-1">
                          <div class="flex justify-between items-start"><h3 class="font-bold text-lg text-gray-900 dark:text-white truncate">${item.name}</h3></div>
@@ -849,6 +1007,7 @@
         
         function renderOrders(searchQuery = '') {
             const tableBody = document.getElementById('orders-table-body'); if (!tableBody) return;
+            tableBody.classList.add('content-loaded');
             const query = searchQuery.toLowerCase().trim();
             const filteredOrders = orders.filter(order => query === '' || order.customer.toLowerCase().includes(query) || order._id.slice(-6).toLowerCase().includes(query));
 
@@ -1093,6 +1252,8 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             const init = localStorage.getItem('lastViewedRoute') || 'dashboard';
+            // Show skeleton IMMEDIATELY — before any network request
+            showSkeletons(init);
             document.getElementById(`admin-view-${init}`)?.classList.remove('hidden');
             loadData(init);
             fetchNotifications();
