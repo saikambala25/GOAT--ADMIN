@@ -4,6 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>LivestockMart - Admin App</title>
+    <meta name="application-name" content="LivestockMart Admin">
+    <meta name="description" content="LivestockMart Admin Dashboard - Manage livestock, orders and customers">
+    <meta name="theme-color" content="#16a34a" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#14532d" media="(prefers-color-scheme: dark)">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="LM Admin">
+    <meta name="msapplication-TileColor" content="#16a34a">
+    <link rel="manifest" id="pwa-manifest-link">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script>
@@ -158,6 +168,48 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 </head>
 <body class="bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100 h-screen flex overflow-hidden transition-colors">
+
+    
+<!-- ══════════════════════════════════════════════
+     PWA INSTALL BANNER
+══════════════════════════════════════════════ -->
+<div id="pwa-install-banner" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:99999;padding:12px 16px 20px;background:linear-gradient(135deg,#000,#14532d);box-shadow:0 -4px 30px rgba(22,163,74,0.35);backdrop-filter:blur(12px);">
+  <div style="max-width:480px;margin:0 auto;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+      <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
+        <div style="width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#16a34a,#14532d);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 4px 12px rgba(22,163,74,0.5);">
+          <span style="color:white;font-size:22px;font-weight:900;font-family:sans-serif;">L</span>
+        </div>
+        <div style="min-width:0;">
+          <p style="margin:0;color:white;font-weight:700;font-size:14px;line-height:1.2;">Install LivestockMart Admin</p>
+          <p style="margin:2px 0 0;color:rgba(255,255,255,0.7);font-size:12px;">Add to Home Screen for quick access</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0;">
+        <button id="pwa-install-btn" onclick="triggerPWAInstall()" style="background:#16a34a;color:white;border:none;padding:9px 18px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(22,163,74,0.5);transition:transform 0.15s,box-shadow 0.15s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+          Install
+        </button>
+        <button onclick="dismissPWABanner()" style="background:rgba(255,255,255,0.12);color:rgba(255,255,255,0.8);border:1px solid rgba(255,255,255,0.2);padding:9px 12px;border-radius:10px;font-size:13px;cursor:pointer;transition:background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='rgba(255,255,255,0.12)'">
+          ✕
+        </button>
+      </div>
+    </div>
+    <!-- iOS specific instruction (shown only on iOS) -->
+    <div id="pwa-ios-hint" style="display:none;margin-top:10px;padding:8px 12px;background:rgba(255,255,255,0.1);border-radius:8px;border:1px solid rgba(255,255,255,0.15);">
+      <p style="margin:0;color:rgba(255,255,255,0.9);font-size:12px;text-align:center;">
+        Tap <strong style="color:white;">Share</strong> <span style="font-size:14px;">⬆️</span> then <strong style="color:white;">"Add to Home Screen"</strong> <span style="font-size:14px;">➕</span>
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- PWA Already Installed Badge (shown in header) -->
+<div id="pwa-installed-badge" style="display:none;position:fixed;top:12px;right:12px;z-index:99998;background:linear-gradient(135deg,#16a34a,#14532d);color:white;padding:6px 12px;border-radius:20px;font-size:11px;font-weight:700;box-shadow:0 4px 12px rgba(22,163,74,0.4);animation:badgePop 0.4s cubic-bezier(.34,1.56,.64,1) both;">
+  ✓ App Installed!
+</div>
+<style>
+@keyframes badgePop { from{opacity:0;transform:scale(0.5) translateY(-10px)} to{opacity:1;transform:scale(1) translateY(0)} }
+</style>
 
     <div id="toast-container" class="fixed top-4 right-4 z-[100] flex flex-col gap-3 pointer-events-none"></div>
 
@@ -1500,6 +1552,216 @@ async function enterprisePreload(){
 }
 window.addEventListener("load", enterprisePreload);
 </script>
+
+
+<!-- ══════════════════════════════════════════════
+     PWA: MANIFEST + SERVICE WORKER + INSTALL LOGIC
+══════════════════════════════════════════════ -->
+<script>
+(function(){
+  // ── Inline Web App Manifest (injected as blob URL) ──────────────────────
+  const manifest = {
+    name: "LivestockMart Admin",
+    short_name: "LM Admin",
+    description: "LivestockMart Admin Dashboard",
+    start_url: "./",
+    display: "standalone",
+    orientation: "portrait",
+    background_color: "#000000",
+    theme_color: "#16a34a",
+    categories: ["business","productivity"],
+    icons: [
+      {
+        src: "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#000000"/><stop offset="100%" style="stop-color:#14532d"/></linearGradient></defs><rect width="512" height="512" rx="96" fill="url(#g)"/><circle cx="256" cy="256" r="160" fill="#16a34a" opacity="0.9"/><text x="256" y="310" text-anchor="middle" fill="white" font-size="200" font-weight="900" font-family="system-ui,sans-serif">L</text></svg>`),
+        sizes: "512x512",
+        type: "image/svg+xml",
+        purpose: "any maskable"
+      },
+      {
+        src: "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" rx="36" fill="#14532d"/><circle cx="96" cy="96" r="60" fill="#16a34a"/><text x="96" y="120" text-anchor="middle" fill="white" font-size="76" font-weight="900" font-family="system-ui,sans-serif">L</text></svg>`),
+        sizes: "192x192",
+        type: "image/svg+xml",
+        purpose: "any maskable"
+      }
+    ],
+    shortcuts: [
+      { name: "Dashboard", short_name: "Dash", description: "View dashboard", url: "./#dashboard" },
+      { name: "Livestock",  short_name: "Stock", description: "Manage livestock", url: "./#livestock" },
+      { name: "Orders",    short_name: "Orders", description: "View orders", url: "./#orders" }
+    ]
+  };
+
+  const blob = new Blob([JSON.stringify(manifest)], {type:'application/json'});
+  const manifestURL = URL.createObjectURL(blob);
+  const link = document.getElementById('pwa-manifest-link');
+  if(link) link.href = manifestURL;
+
+  // ── Inline Service Worker (injected as blob URL) ─────────────────────────
+  const swCode = `
+const CACHE = 'lm-admin-v1';
+const OFFLINE_URLS = ['/'];
+
+self.addEventListener('install', e => {
+  self.skipWaiting();
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll([])));
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(clients.claim());
+  e.waitUntil(caches.keys().then(keys => Promise.all(
+    keys.filter(k => k !== CACHE).map(k => caches.delete(k))
+  )));
+});
+
+self.addEventListener('fetch', e => {
+  if(e.request.method !== 'GET') return;
+  const url = new URL(e.request.url);
+  // Cache-first for same-origin assets; network-first for API calls
+  if(url.origin !== location.origin || url.pathname.includes('/admin/')) {
+    e.respondWith(
+      fetch(e.request).catch(() => caches.match(e.request))
+    );
+  } else {
+    e.respondWith(
+      caches.match(e.request).then(cached => {
+        const network = fetch(e.request).then(res => {
+          if(res && res.status === 200 && res.type === 'basic'){
+            caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+          }
+          return res;
+        });
+        return cached || network;
+      })
+    );
+  }
+});
+
+self.addEventListener('message', e => {
+  if(e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
+});
+  `;
+
+  if('serviceWorker' in navigator){
+    const swBlob = new Blob([swCode], {type:'text/javascript'});
+    const swURL  = URL.createObjectURL(swBlob);
+    navigator.serviceWorker.register(swURL, {scope: './'})
+      .then(reg => {
+        console.log('[PWA] Service worker registered', reg.scope);
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          newWorker.addEventListener('statechange', () => {
+            if(newWorker.state === 'installed' && navigator.serviceWorker.controller){
+              showUpdateToast();
+            }
+          });
+        });
+      })
+      .catch(err => console.warn('[PWA] SW registration failed:', err));
+  }
+
+  // ── Install Banner Logic ─────────────────────────────────────────────────
+  let deferredPrompt = null;
+  const banner        = document.getElementById('pwa-install-banner');
+  const iosBadge      = document.getElementById('pwa-ios-hint');
+  const installedBadge= document.getElementById('pwa-installed-badge');
+
+  function isIOS(){ return /iphone|ipad|ipod/i.test(navigator.userAgent); }
+  function isInStandaloneMode(){ return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone; }
+  function wasDismissed(){ return localStorage.getItem('pwa_banner_dismissed') === '1'; }
+
+  function showBanner(){
+    if(!banner || wasDismissed() || isInStandaloneMode()) return;
+    banner.style.display = 'block';
+    banner.style.animation = 'slideUpBanner 0.4s cubic-bezier(.22,.68,0,1.2) both';
+  }
+
+  window.triggerPWAInstall = async function(){
+    if(deferredPrompt){
+      deferredPrompt.prompt();
+      const {outcome} = await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      if(outcome === 'accepted') onInstalled();
+      else dismissPWABanner();
+    }
+  };
+
+  window.dismissPWABanner = function(){
+    if(!banner) return;
+    banner.style.animation = 'slideDownBanner 0.3s ease both';
+    setTimeout(() => { banner.style.display = 'none'; }, 300);
+    localStorage.setItem('pwa_banner_dismissed', '1');
+  };
+
+  function onInstalled(){
+    dismissPWABanner();
+    if(installedBadge){
+      installedBadge.style.display = 'block';
+      setTimeout(() => installedBadge.style.display = 'none', 3500);
+    }
+    if(typeof showToast === 'function') showToast('App installed! 🎉', 'success');
+  }
+
+  function showUpdateToast(){
+    if(typeof showToast === 'function') showToast('Update available — refresh to apply', 'info');
+  }
+
+  // Chrome / Edge / Samsung — beforeinstallprompt
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredPrompt = e;
+    setTimeout(showBanner, 2500); // show 2.5s after load
+  });
+
+  // iOS Safari — show manual instructions banner
+  if(isIOS() && !isInStandaloneMode() && !wasDismissed()){
+    if(iosBadge) iosBadge.style.display = 'block';
+    const installBtn = document.getElementById('pwa-install-btn');
+    if(installBtn){ installBtn.textContent = 'How to Install'; installBtn.onclick = () => { if(iosBadge) iosBadge.style.display = iosBadge.style.display === 'none' ? 'block' : 'none'; }; }
+    setTimeout(showBanner, 2500);
+  }
+
+  // Installed
+  window.addEventListener('appinstalled', () => onInstalled());
+
+  // ── Expose "Install App" as a nav shortcut (adds button to sidebar) ─────
+  document.addEventListener('DOMContentLoaded', () => {
+    // Add Install button to sidebar nav
+    const nav = document.querySelector('nav.flex-1');
+    if(nav && !isInStandaloneMode()){
+      const installNavBtn = document.createElement('button');
+      installNavBtn.id = 'sidebar-install-btn';
+      installNavBtn.className = 'admin-nav-item w-full flex items-center gap-3 px-4 py-3 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-xl transition-all duration-200 group font-semibold';
+      installNavBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Install App';
+      installNavBtn.onclick = () => {
+        if(deferredPrompt) triggerPWAInstall();
+        else showBanner();
+      };
+      nav.appendChild(installNavBtn);
+
+      // Hide sidebar install button once installed
+      window.addEventListener('appinstalled', () => { installNavBtn.remove(); });
+      // Also hide if already in standalone
+      if(isInStandaloneMode()) installNavBtn.remove();
+    }
+  });
+
+  // ── CSS for banner animations ────────────────────────────────────────────
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes slideUpBanner {
+      from { transform: translateY(100%); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+    @keyframes slideDownBanner {
+      from { transform: translateY(0);    opacity: 1; }
+      to   { transform: translateY(100%); opacity: 0; }
+    }
+    #pwa-install-banner { font-family: 'Inter', system-ui, sans-serif; }
+  `;
+  document.head.appendChild(style);
+})();
+</script>
+<!-- ══════════════════════════════════════════════ -->
 
 </body>
 </html>
