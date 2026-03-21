@@ -1518,13 +1518,6 @@
             document.getElementById(`admin-view-${init}`)?.classList.remove('hidden');
             loadData(init);
             fetchNotifications();
-
-            // Auto-request push permission 5s after load if SW is ready
-            setTimeout(() => {
-                if (typeof window.enableAdminPush === 'function') {
-                    window.enableAdminPush();
-                }
-            }, 5000);
         });
     </script>
 
@@ -1603,91 +1596,69 @@ window.addEventListener("load", enterprisePreload);
   const link = document.getElementById('pwa-manifest-link');
   if(link) link.href = manifestURL;
 
-  // ── Real Service Worker — required for Web Push ──────────────────────────
-  // sw.js is served as a static file from your domain root.
-  // Blob-URL service workers CANNOT receive Web Push — this is why we switched.
-  const API = 'https://goat-user-alpha.vercel.app/api';
+  // ── Inline Service Worker (injected as blob URL) ─────────────────────────
+  const swCode = `
+const CACHE = 'lm-admin-v1';
+const OFFLINE_URLS = ['/'];
 
-  /* Convert base64url VAPID public key to Uint8Array */
-  function urlBase64ToUint8Array(base64String) {
-    const padding = '='.repeat((4 - base64String.length % 4) % 4);
-    const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-    const raw = atob(base64);
-    return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+self.addEventListener('install', e => {
+  self.skipWaiting();
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll([])));
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(clients.claim());
+  e.waitUntil(caches.keys().then(keys => Promise.all(
+    keys.filter(k => k !== CACHE).map(k => caches.delete(k))
+  )));
+});
+
+self.addEventListener('fetch', e => {
+  if(e.request.method !== 'GET') return;
+  const url = new URL(e.request.url);
+  // Cache-first for same-origin assets; network-first for API calls
+  if(url.origin !== location.origin || url.pathname.includes('/admin/')) {
+    e.respondWith(
+      fetch(e.request).catch(() => caches.match(e.request))
+    );
+  } else {
+    e.respondWith(
+      caches.match(e.request).then(cached => {
+        const network = fetch(e.request).then(res => {
+          if(res && res.status === 200 && res.type === 'basic'){
+            caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+          }
+          return res;
+        });
+        return cached || network;
+      })
+    );
   }
+});
 
-  /* Save subscription to server */
-  async function saveSubscription(sub) {
-    try {
-      await fetch(`${API}/push/subscribe`, {
-        method     : 'POST',
-        credentials: 'include',
-        headers    : { 'Content-Type': 'application/json' },
-        body       : JSON.stringify({ subscription: sub.toJSON(), isAdmin: false })
-      });
-      console.log('[Push] User subscription saved ✅');
-    } catch(e) { console.warn('[Push] Save subscription failed', e); }
-  }
+self.addEventListener('message', e => {
+  if(e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
+});
+  `;
 
-  /* Subscribe this device to push notifications */
-  async function subscribeToPush(reg) {
-    try {
-      if (Notification.permission !== 'granted') return;
-      const keyRes = await fetch(`${API}/push/vapid-public-key`, { credentials: 'include' });
-      if (!keyRes.ok) { console.warn('[Push] VAPID key not available'); return; }
-      const { publicKey } = await keyRes.json();
-      if (!publicKey) return;
-
-      const existing = await reg.pushManager.getSubscription();
-      const sub = existing || await reg.pushManager.subscribe({
-        userVisibleOnly     : true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey)
-      });
-      await saveSubscription(sub);
-    } catch(err) {
-      console.warn('[Push] subscribeToPush failed:', err);
-    }
-  }
-
-  /* Request permission and subscribe — called after login */
-  window.requestUserPush = async function(reg) {
-    if (!('PushManager' in window)) return;
-    if (Notification.permission === 'denied') return;
-    if (Notification.permission === 'default') {
-      const result = await Notification.requestPermission();
-      if (result !== 'granted') return;
-    }
-    await subscribeToPush(reg);
-  };
-
-  let _swReg = null;
-
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js', { scope: './' })
-      .then(async reg => {
-        _swReg = reg;
+  if('serviceWorker' in navigator){
+    const swBlob = new Blob([swCode], {type:'text/javascript'});
+    const swURL  = URL.createObjectURL(swBlob);
+    navigator.serviceWorker.register(swURL, {scope: './'})
+      .then(reg => {
         console.log('[PWA] Service worker registered', reg.scope);
-
         reg.addEventListener('updatefound', () => {
           const newWorker = reg.installing;
           newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            if(newWorker.state === 'installed' && navigator.serviceWorker.controller){
               showUpdateToast();
             }
           });
         });
-
-        // If already granted, re-subscribe silently (handles app reinstall / key rotation)
-        if (Notification.permission === 'granted') {
-          await subscribeToPush(reg);
-        }
       })
-      .catch(err => {
-        console.warn('[PWA] SW registration failed:', err);
-      });
+      .catch(err => console.warn('[PWA] SW registration failed:', err));
   }
 
-  // ── Install Banner Logic ─────────────────────────────────────────────────
   // ── Install Banner Logic ─────────────────────────────────────────────────
   let deferredPrompt = null;
   const banner        = document.getElementById('pwa-install-banner');
